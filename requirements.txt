@@ -1,0 +1,3 @@
+gamdl
+python-telegram-bot
+python-decouple
