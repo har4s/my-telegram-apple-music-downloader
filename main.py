@@ -50,7 +50,7 @@ async def main(update: Update, context: CallbackContext):
     synced_lyrics_only: bool = False
     no_synced_lyrics: bool = False
     log_level: str = "INFO"
-    print_exceptions: bool = False
+    print_exceptions: bool = True
     cookies_path: Path = Path("./data/cookies.txt").resolve()
     language: str = apple_music_api_sig.parameters["language"].default
     output_path: Path = downloader_sig.parameters["output_path"].default
@@ -60,7 +60,7 @@ async def main(update: Update, context: CallbackContext):
     mp4decrypt_path: str = downloader_sig.parameters["mp4decrypt_path"].default
     ffmpeg_path: str = downloader_sig.parameters["ffmpeg_path"].default
     mp4box_path: str = downloader_sig.parameters["mp4box_path"].default
-    download_mode: DownloadMode = downloader_sig.parameters["download_mode"].default
+    download_mode: DownloadMode = DownloadMode.YTDLP
     remux_mode: RemuxMode = downloader_sig.parameters["remux_mode"].default
     cover_format: CoverFormat = downloader_sig.parameters["cover_format"].default
     template_folder_album: str = downloader_sig.parameters[
@@ -504,11 +504,10 @@ async def main(update: Update, context: CallbackContext):
                         final_path,
                         playlist_track,
                     )
-                
-                context.bot.send_audio(
+                await context.bot.send_audio(
                     chat_id=chat_id,
                     title=track_metadata["attributes"]["name"],
-                    performer=track_metadata["attributes"]["artist"],
+                    performer=track_metadata["attributes"]["artistName"],
                     thumbnail=open(cover_path, "rb"),
                     audio=open(final_path, 'rb'),
                 )

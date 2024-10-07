@@ -9,11 +9,6 @@ RUN apt-get update && apt-get install -y \
     xz-utils \
     ca-certificates
 
-# Define environment variable for architecture
-# This will dynamically fetch architecture: amd64 (x86_64) or arm64
-ARG ARCH=$(uname -m)
-
-# Switch case for different architectures
 RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O /tmp/ffmpeg.tar.xz;
 
 # Extract and install ffmpeg
