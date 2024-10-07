@@ -14,13 +14,7 @@ RUN apt-get update && apt-get install -y \
 ARG ARCH=$(uname -m)
 
 # Switch case for different architectures
-RUN if [ "$ARCH" = "x86_64" ]; then \
-    wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O /tmp/ffmpeg.tar.xz; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-    wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz -O /tmp/ffmpeg.tar.xz; \
-    else \
-    echo "Unsupported architecture: $ARCH" && exit 1; \
-    fi
+RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O /tmp/ffmpeg.tar.xz;
 
 # Extract and install ffmpeg
 RUN tar -xf /tmp/ffmpeg.tar.xz -C /tmp && \
