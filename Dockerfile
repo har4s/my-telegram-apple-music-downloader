@@ -1,12 +1,11 @@
-# Use the official Ubuntu base image
-FROM ubuntu:latest
+FROM python:latest
 
 # Set environment variables to avoid interactive prompts during package installations
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Update the package list and install Python, FFmpeg, and other necessary packages
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip ffmpeg && \
+    apt-get install -y ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -22,4 +21,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set the default command to run your bot
-CMD ["python3", "main.py"]
+CMD ["python", "main.py"]
