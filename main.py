@@ -32,6 +32,7 @@ downloader_post_sig = inspect.signature(DownloaderPost.__init__)
 
 
 async def main(update: Update, context: CallbackContext):
+    chat_id = update.message.chat_id
     user_id = update.message.from_user.id
 
     if user_id not in TELEGRAM_ADMIN_ID:
@@ -346,10 +347,6 @@ async def main(update: Update, context: CallbackContext):
                         downloader_song.save_lyrics_synced(
                             lyrics_synced_path, lyrics.synced
                         )
-                    try:
-                        context.bot.send_document(chat_id=update.effective_chat.id, document=open(final_path, 'rb'))
-                    except Exception as e:
-                        update.message.reply_text(f'Error sending file: {str(e)}')
                 elif track_metadata["type"] == "music-videos":
                     music_video_id_alt = downloader_music_video.get_music_video_id_alt(
                         track_metadata
@@ -507,6 +504,14 @@ async def main(update: Update, context: CallbackContext):
                         final_path,
                         playlist_track,
                     )
+                
+                context.bot.send_audio(
+                    chat_id=chat_id,
+                    title=track_metadata["attributes"]["name"],
+                    performer=track_metadata["attributes"]["artist"],
+                    thumbnail=open(cover_path, "rb"),
+                    audio=open(final_path, 'rb'),
+                )
             except Exception as e:
                 error_count += 1
                 logger.error(
