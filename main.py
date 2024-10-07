@@ -86,7 +86,7 @@ async def main(update: Update, context: CallbackContext):
     ].default
     template_date: str = downloader_sig.parameters["template_date"].default
     exclude_tags: str = downloader_sig.parameters["exclude_tags"].default
-    cover_size: int = downloader_sig.parameters["cover_size"].default
+    cover_size: int = 320
     truncate: int = downloader_sig.parameters["truncate"].default
     codec_song: SongCodec = downloader_song_sig.parameters["codec"].default
     synced_lyrics_format: SyncedLyricsFormat = downloader_song_sig.parameters[
@@ -508,7 +508,7 @@ async def main(update: Update, context: CallbackContext):
                     chat_id=chat_id,
                     title=track_metadata["attributes"]["name"],
                     performer=track_metadata["attributes"]["artistName"],
-                    thumbnail=cover_url,
+                    thumbnail=open(cover_path, 'rb'),
                     audio=open(final_path, 'rb'),
                 )
             except Exception as e:
