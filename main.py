@@ -508,7 +508,7 @@ async def main(update: Update, context: CallbackContext):
                     chat_id=chat_id,
                     title=track_metadata["attributes"]["name"],
                     performer=track_metadata["attributes"]["artistName"],
-                    thumbnail=open(cover_path, "rb"),
+                    thumbnail=cover_url,
                     audio=open(final_path, 'rb'),
                 )
             except Exception as e:
