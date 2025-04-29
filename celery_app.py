@@ -33,8 +33,6 @@ def extract_info(line: str) -> str | None:
 
 @app.task
 async def process_msg(update: Update, context: CallbackContext):
-    downloads_path = f"./downloads-{uuid.uuid4()}"
-    chat_id = update.message.chat_id
     user_id = update.message.from_user.id
     if user_id not in TELEGRAM_ADMIN_ID:
         return await update.message.reply_text("You are not authorized!")
@@ -44,6 +42,15 @@ async def process_msg(update: Update, context: CallbackContext):
     if len(urls) <= 0:
         return None
 
+    downloads_path = f"./downloads-{uuid.uuid4()}"
+
+    await download_files(downloads_path,urls,update,context)
+    await send_files(downloads_path,update,context)
+    return await clear_downloads()
+
+
+@app.task
+async def download_files(downloads_path:str,urls: list[str],update: Update, context: CallbackContext):
     command = [
         "gamdl",
         "-c",
@@ -83,6 +90,19 @@ async def process_msg(update: Update, context: CallbackContext):
                 print(e)
         await asyncio.sleep(0.9)  # avoid flooding Telegram with too many edits
 
+    try:
+        if info_message:
+            await info_message.delete()
+        if progress_message:
+            await progress_message.delete()
+            return None
+        return None
+    except Exception as e:
+        print(e)
+        return None
+
+@app.task
+async def send_files(downloads_path:str,update: Update, context: CallbackContext):
     m4a_files = glob.glob(f'{downloads_path}/**/*.m4a', recursive=True)
     m4a_files = [os.path.abspath(path) for path in m4a_files]
 
@@ -100,7 +120,7 @@ async def process_msg(update: Update, context: CallbackContext):
         msg = await update.message.reply_text(f"Uploading {artist} - {title}")
         try:
             await context.bot.send_audio(
-                chat_id=chat_id,
+                chat_id=update.message.chat_id,
                 title=title,
                 performer=artist,
                 thumbnail=open(cover_path, "rb"),
@@ -110,16 +130,8 @@ async def process_msg(update: Update, context: CallbackContext):
             await msg.delete()
             print(e)
 
+
+@app.task
+async def clear_downloads(downloads_path:str):
     if os.path.exists(downloads_path):
         shutil.rmtree(downloads_path)
-
-    try:
-        if info_message:
-            await info_message.delete()
-        if progress_message:
-            await progress_message.delete()
-            return None
-        return None
-    except Exception as e:
-        print(e)
-        return None
