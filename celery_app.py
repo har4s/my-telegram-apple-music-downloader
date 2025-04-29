@@ -126,8 +126,8 @@ async def send_files(downloads_path:str,update: Update, context: CallbackContext
                 thumbnail=open(cover_path, "rb"),
                 audio=open(m4a_file, "rb"),
             )
-        except Exception as e:
             await msg.delete()
+        except Exception as e:
             print(e)
 
 
