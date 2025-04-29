@@ -2,5 +2,3 @@
 cookies.txt
 data
 .idea
-downloads/*
-!downloads/.gitkeep

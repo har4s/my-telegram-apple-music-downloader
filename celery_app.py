@@ -33,7 +33,7 @@ def extract_info(line: str) -> str | None:
 
 @app.task
 async def process_msg(update: Update, context: CallbackContext):
-    downloads_path = f"./downloads/{uuid.uuid4()}"
+    downloads_path = f"./downloads-{uuid.uuid4()}"
     chat_id = update.message.chat_id
     user_id = update.message.from_user.id
     if user_id not in TELEGRAM_ADMIN_ID:
