@@ -2,3 +2,4 @@ gamdl
 python-telegram-bot
 python-decouple
 mutagen
+celery[redis]

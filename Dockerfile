@@ -28,5 +28,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of your bot code into the container
 COPY . .
 
-# Set the default command to run your bot
-CMD ["python", "main.py"]
+# No default CMD - will be specified in docker-compose.yml
