@@ -6,11 +6,10 @@ import asyncio
 import glob
 import uuid
 
+import telegram
 from mutagen.mp4 import MP4
 from gamdl.constants import MP4_TAGS_MAP
-from telegram import Update
-from telegram.ext import CallbackContext
-from config import TELEGRAM_ADMIN_ID,REDIS_BROKER_URL
+from config import REDIS_BROKER_URL,TELEGRAM_TOKEN
 from celery import Celery
 
 # Initialize Celery app
@@ -31,26 +30,19 @@ def extract_info(line: str) -> str | None:
     match = re.search(r"\[INFO\s+[^]]+]\s+(.*)", line)
     return match.group(1).strip() if match else None
 
-@app.task
-async def process_msg(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
-    if user_id not in TELEGRAM_ADMIN_ID:
-        return await update.message.reply_text("You are not authorized!")
-    message_text = update.message.text
-    url_regex = r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"  # Regular expression for URLs
-    urls: list[str] = re.findall(url_regex, message_text)
-    if len(urls) <= 0:
-        return None
+bot = telegram.Bot(token=TELEGRAM_TOKEN)
 
+@app.task
+def process_msg(urls: list[str], chat_id:int|str):
     downloads_path = f"./downloads-{uuid.uuid4()}"
+    async def _process_msg():
+        await download_files(downloads_path,urls, chat_id)
+        await send_files(downloads_path,chat_id)
+        clear_downloads(downloads_path)
+    asyncio.run(_process_msg())
 
-    await download_files(downloads_path,urls,update,context)
-    await send_files(downloads_path,update,context)
-    return await clear_downloads()
 
-
-@app.task
-async def download_files(downloads_path:str,urls: list[str],update: Update, context: CallbackContext):
+async def download_files(downloads_path:str,urls: list[str],chat_id:int|str):
     command = [
         "gamdl",
         "-c",
@@ -63,7 +55,7 @@ async def download_files(downloads_path:str,urls: list[str],update: Update, cont
     ] + urls
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-    info_message = await update.message.reply_text("Starting command...")
+    info_message = await bot.send_message(chat_id,text="Starting command...")
     progress_message = None
 
     while True:
@@ -78,7 +70,7 @@ async def download_files(downloads_path:str,urls: list[str],update: Update, cont
             try:
                 if progress:
                     if progress_message is None:
-                        progress_message = await update.message.reply_text(progress)
+                        progress_message = await bot.send_message(chat_id,text=progress)
                     else:
                         await progress_message.edit_text(progress)
                 elif info:
@@ -101,8 +93,7 @@ async def download_files(downloads_path:str,urls: list[str],update: Update, cont
         print(e)
         return None
 
-@app.task
-async def send_files(downloads_path:str,update: Update, context: CallbackContext):
+async def send_files(downloads_path:str,chat_id:int|str):
     m4a_files = glob.glob(f'{downloads_path}/**/*.m4a', recursive=True)
     m4a_files = [os.path.abspath(path) for path in m4a_files]
 
@@ -117,10 +108,10 @@ async def send_files(downloads_path:str,update: Update, context: CallbackContext
         title = music[MP4_TAGS_MAP["title"]][0]
         artist = music[MP4_TAGS_MAP["artist"]][0]
 
-        msg = await update.message.reply_text(f"Uploading {artist} - {title}")
+        msg = await bot.send_message(chat_id,text=f"Uploading {artist} - {title}")
         try:
-            await context.bot.send_audio(
-                chat_id=update.message.chat_id,
+            await bot.send_audio(
+                chat_id=chat_id,
                 title=title,
                 performer=artist,
                 thumbnail=open(cover_path, "rb"),
@@ -130,8 +121,6 @@ async def send_files(downloads_path:str,update: Update, context: CallbackContext
         except Exception as e:
             print(e)
 
-
-@app.task
-async def clear_downloads(downloads_path:str):
+def clear_downloads(downloads_path:str):
     if os.path.exists(downloads_path):
         shutil.rmtree(downloads_path)
