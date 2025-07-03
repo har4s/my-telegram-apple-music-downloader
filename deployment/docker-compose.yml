@@ -23,7 +23,6 @@ services:
       - ./_data:/app/data
     depends_on:
       - redis
-      - celery_worker
     env_file:
       - example.env
     restart: unless-stopped
