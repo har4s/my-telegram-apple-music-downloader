@@ -1,11 +1,13 @@
 import asyncio
 import contextlib
+import datetime
 import glob
 import io
 import os
 import shutil
 from dataclasses import dataclass
 import re
+from datetime import timedelta
 from uuid import uuid4
 from gamdl.cli import main as gamdl_main
 from gamdl.constants import MP4_TAGS_MAP
@@ -69,19 +71,17 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
         print(e)
 
     finally:
-        lines = []
-        for line in output_buffer.getvalue().split("\n"):
-            striped = strip_ansi(line)
-            progress = extract_progress(striped)
-            info = extract_info(striped)
-            if progress:
-                lines.append(progress)
-            elif info:
-                lines.append(info)
-
-        await start_msg.edit_text("\n".join(lines[:-2]))
-
-        print(lines)
+        is_done = False
+        started_time = datetime.datetime.now(datetime.UTC)
+        while not is_done and started_time + timedelta(minutes=5) > datetime.datetime.now(datetime.UTC):
+            for line in output_buffer.getvalue().split("\n"):
+                striped = strip_ansi(line)
+                # progress = extract_progress(striped)
+                info = extract_info(striped)
+                if info and info.lower().startswith("done"):
+                    await start_msg.edit_text(info)
+                    is_done = True
+                    break
 
         m4a_files = glob.glob(f'{context.job.data.downloads_path}/**/*.m4a', recursive=True)
         m4a_files = [os.path.abspath(path) for path in m4a_files]
