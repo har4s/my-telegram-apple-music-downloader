@@ -79,7 +79,7 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
             elif info:
                 lines.append(info)
 
-        await start_msg.edit_text("\n".join(lines[:2]))
+        await start_msg.edit_text("\n".join(lines[:-2]))
 
         print(lines)
 
