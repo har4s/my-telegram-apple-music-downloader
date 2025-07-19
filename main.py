@@ -151,7 +151,7 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
     )
 
     info_message = await context.bot.send_message(context.job.chat_id, text="Started...", reply_to_message_id=context.job.data.msg_id)
-    progress_message = await context.bot.send_message(context.job.chat_id, text="Downloading...", reply_to_message_id=info_message.message_id)
+    progress_message = await context.bot.send_message(context.job.chat_id, text="Waiting...", reply_to_message_id=info_message.message_id)
 
     context.job.data.info_message_id = info_message.message_id
     context.job.data.progress_message_id = progress_message.message_id
