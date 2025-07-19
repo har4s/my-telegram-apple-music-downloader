@@ -52,10 +52,10 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
         artist = music[MP4_TAGS_MAP["artist"]][0]
 
         try:
-            msg = await application.send_message(
+            msg = await context.bot.send_message(
                 context.job.chat_id, text=f"Uploading {artist} - {title}"
             )
-            await application.send_audio(
+            await context.bot.send_audio(
                 chat_id=context.job.chat_id,
                 title=title,
                 performer=artist,
