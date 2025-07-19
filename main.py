@@ -60,9 +60,9 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
                         "320",
                         "-o",
                         context.job.data.downloads_path,
+                        "--no-config-file",
                         *context.job.data.urls,
                     ],
-                    standalone_mode=False,
                 )
 
         await asyncio.to_thread(blocking_runner)
