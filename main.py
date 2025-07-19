@@ -1,3 +1,4 @@
+import datetime
 import glob
 import logging
 import os
@@ -31,6 +32,7 @@ def extract_info(line: str) -> str | None:
 
 @dataclass
 class TaskContext:
+    started_at: datetime
     uuid: str
     urls: list[str]
     downloads_path: str
@@ -45,6 +47,14 @@ tasks_cache: dict[str,tuple[Popen[str],TaskContext]] = {}
 
 application = Application.builder().token(TELEGRAM_TOKEN).build()
 
+async def callback_cleanup(context:ContextTypes.DEFAULT_TYPE):
+    cache_copy = tasks_cache.copy()
+    for uuid in cache_copy.keys():
+        _, task_context = tasks_cache[uuid]
+        if task_context.started_at + datetime.timedelta(minutes=15) < datetime.datetime.now(datetime.UTC):
+            context.bot.delete_message(chat_id=task_context.chat_id, message_id=task_context.progress_message_id)
+            context.bot.delete_message(chat_id=task_context.chat_id, message_id=task_context.info_message_id)
+            del tasks_cache[uuid]
 
 async def callback_done(context: ContextTypes.DEFAULT_TYPE):
     m4a_files = glob.glob(f"{context.job.data.downloads_path}/**/*.m4a", recursive=True)
@@ -75,6 +85,10 @@ async def callback_done(context: ContextTypes.DEFAULT_TYPE):
                 audio=open(m4a_file, "rb"),
             )
             await msg.delete()
+            await context.bot.deleteMessage(
+                chat_id=context.job.chat_id,
+                message_id=context.job.data.info_message_id,
+            )
 
         except Exception as e:
             logging.error(e)
@@ -105,13 +119,13 @@ async def callback_process(context: ContextTypes.DEFAULT_TYPE):
                     )
                 elif info:
                     await context.bot.editMessageText(
-                        chat_id=context.job.chat_id,
+                        chat_id=task_context.chat_id,
                         message_id=task_context.info_message_id,
                         text=info,
                     )
                     if info.lower().startswith("done") and task_context.progress_message_id is not None:
                         await context.bot.deleteMessage(
-                            chat_id=context.job.chat_id,
+                            chat_id=task_context.chat_id,
                             message_id=task_context.progress_message_id,
                         )
                         task_context.progress_message_id = None
@@ -139,8 +153,8 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
     info_message = await context.bot.send_message(context.job.chat_id, text="Started...", reply_to_message_id=context.job.data.msg_id)
     progress_message = await context.bot.send_message(context.job.chat_id, text="Downloading...", reply_to_message_id=info_message.message_id)
 
-    context.job.data.info_message_id = info_message
-    context.job.data.progress_message_id = progress_message
+    context.job.data.info_message_id = info_message.message_id
+    context.job.data.progress_message_id = progress_message.message_id
 
     tasks_cache[context.job.data.uuid] = (process, context.job.data,)
 
@@ -160,6 +174,7 @@ async def callback_validate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task_id = str(uuid4())
     downloads_path = f"./downloads-{task_id}"
     task_context = TaskContext(
+        started_at=datetime.datetime.now(datetime.UTC),
         uuid=task_id,
         urls=urls,
         downloads_path=downloads_path,
@@ -178,7 +193,8 @@ msg_handler = MessageHandler(
 )
 
 application.add_handler(msg_handler)
-application.job_queue.run_repeating(callback_process, 6, first=0)
+application.job_queue.run_repeating(callback_process, 6)
+application.job_queue.run_repeating(callback_cleanup, 300)
 
 
 # try:
