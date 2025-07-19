@@ -81,6 +81,8 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
 
         await start_msg.edit_text("\n".join(lines[:2]))
 
+        print(lines)
+
         m4a_files = glob.glob(f'{context.job.data.downloads_path}/**/*.m4a', recursive=True)
         m4a_files = [os.path.abspath(path) for path in m4a_files]
 
