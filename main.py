@@ -3,10 +3,10 @@ import glob
 import logging
 import os
 import shutil
+import subprocess
 from dataclasses import dataclass
 import re
 from uuid import uuid4
-from gamdl.cli import main as gamdl_main
 from gamdl.constants import MP4_TAGS_MAP
 from mutagen.mp4 import MP4
 from telegram import Update, MessageEntity
@@ -40,32 +40,51 @@ application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 
 async def callback_start(context: ContextTypes.DEFAULT_TYPE):
-    start_msg = await context.bot.send_message(context.job.chat_id, text="Started...", reply_to_message_id=context.job.data.msg_id)
+    command = [
+        "gamdl",
+        "-c",
+        "./data/cookies.txt",
+        "-s",
+        "--cover-size",
+        "320",
+        "-o",
+        context.job.data.downloads_path,
+        *context.job.data.urls,
+    ]
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
 
-    try:
-        def blocking_runner():
-            gamdl_main.main(
-                [
-                    "-c",
-                    "./data/cookies.txt",
-                    "-s",
-                    "--cover-size",
-                    "320",
-                    "-o",
-                    context.job.data.downloads_path,
-                    "--no-config-file",
-                    *context.job.data.urls,
-                ],
-            )
+    info_message = await context.bot.send_message(context.job.chat_id, text="Started...", reply_to_message_id=context.job.data.msg_id)
+    progress_message = None
 
-        await asyncio.to_thread(blocking_runner)
+    while True:
+        raw_line = process.stdout.readline()
+        if raw_line == "" and process.poll() is not None:
+            break
+        if raw_line:
+            line = strip_ansi(raw_line)
+            progress = extract_progress(line)
+            info = extract_info(line)
+            try:
+                if progress:
+                    if progress_message is None:
+                        progress_message = await application.send_message(
+                            context.job.chat_id,
+                            text=progress,
+                        )
+                elif info:
+                    await info_message.edit_text(info)
+                    if info.lower().startswith("done") and progress_message is not None:
+                        await progress_message.delete()
+                        progress_message = None
+            except Exception as e:
+                print(e)
+        await asyncio.sleep(0.9)  # avoid flooding Telegram with too many edits
 
-    except Exception as e:
-        logging.error(e)
-
-    finally:
         m4a_files = glob.glob(f'{context.job.data.downloads_path}/**/*.m4a', recursive=True)
         m4a_files = [os.path.abspath(path) for path in m4a_files]
+
 
         for m4a_file in m4a_files:
             music = MP4(m4a_file)
@@ -95,7 +114,6 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(context.job.data.downloads_path):
             shutil.rmtree(context.job.data.downloads_path)
 
-        await start_msg.delete()
 
 async def callback_validate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
