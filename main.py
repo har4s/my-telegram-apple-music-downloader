@@ -98,13 +98,13 @@ async def callback_process(context: ContextTypes.DEFAULT_TYPE):
             info = extract_info(line)
             try:
                 if progress:
-                    context.bot.editMessageText(
+                    await context.bot.editMessageText(
                         chat_id=context.job.chat_id,
                         message_id=task_context.progress_message_id,
                         text=progress,
                     )
                 elif info:
-                    context.bot.editMessageText(
+                    await context.bot.editMessageText(
                         chat_id=context.job.chat_id,
                         message_id=task_context.info_message_id,
                         text=info,
