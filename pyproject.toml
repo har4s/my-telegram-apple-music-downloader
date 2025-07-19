@@ -1,0 +1,10 @@
+[project]
+name = "my-telegram-apple-music-downloader"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "gamdl>=2.5",
+    "python-decouple>=3.8",
+    "python-telegram-bot[job-queue,webhooks]>=22.2",
+]
