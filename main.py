@@ -5,7 +5,6 @@ import logging
 import os
 import shutil
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 import re
 
 from gamdl.constants import MP4_TAGS_MAP
@@ -15,8 +14,7 @@ from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from config import TELEGRAM_TOKEN, TELEGRAM_ADMIN_ID
 
-if TYPE_CHECKING:
-    from asyncio.subprocess import Process # noqa
+from asyncio.subprocess import Process # noqa
 
 @dataclass
 class TaskContext:
