@@ -1,6 +1,6 @@
 # My Telegram Apple Music Downloader
 
-A Telegram bot that downloads Apple Music content using Celery for task processing.
+A Telegram bot that downloads Apple Music content.
 
 ## Prerequisites
 
@@ -54,11 +54,6 @@ Start the application using Docker Compose:
 cd deployment
 docker-compose up -d
 ```
-
-This will start:
-- Redis service for message queuing
-- Celery worker for processing download tasks
-- Telegram bot service
 
 ## Usage
 

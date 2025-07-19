@@ -1,31 +1,9 @@
 services:
-  redis:
-    image: redis:latest
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-
-  celery_worker:
-    image: ghcr.io/har4s/my-telegram-apple-music-downloader:main
-    command: celery -A celery_app.app worker --loglevel=info
-    volumes:
-      - ./_data:/app/data
-    depends_on:
-      - redis
-    env_file:
-      - example.env
-    restart: unless-stopped
-
   telegram_bot:
     image: ghcr.io/har4s/my-telegram-apple-music-downloader:main
-    command: python tg_bot.py
+    command: python main.py
     volumes:
       - ./_data:/app/data
-    depends_on:
-      - redis
     env_file:
       - example.env
     restart: unless-stopped
-
-volumes:
-  redis_data:
