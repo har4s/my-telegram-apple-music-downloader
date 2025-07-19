@@ -1,4 +1,3 @@
-import asyncio
 import glob
 import logging
 import os
@@ -6,13 +5,16 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 import re
+from subprocess import Popen
 from uuid import uuid4
+
 from gamdl.constants import MP4_TAGS_MAP
 from mutagen.mp4 import MP4
 from telegram import Update, MessageEntity
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from config import TELEGRAM_TOKEN, TELEGRAM_ADMIN_ID
+
 
 ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
 
@@ -35,8 +37,86 @@ class TaskContext:
     user_id: int
     chat_id: int
     msg_id: int
+    info_message_id: int | None = None
+    progress_message_id: int | None = None
+
+
+tasks_cache: dict[str,tuple[Popen[str],TaskContext]] = {}
 
 application = Application.builder().token(TELEGRAM_TOKEN).build()
+
+
+async def callback_done(context: ContextTypes.DEFAULT_TYPE):
+    m4a_files = glob.glob(f"{context.job.data.downloads_path}/**/*.m4a", recursive=True)
+    m4a_files = [os.path.abspath(path) for path in m4a_files]
+
+    for m4a_file in m4a_files:
+        music = MP4(m4a_file)
+        music.update(
+            {
+                MP4_TAGS_MAP["comment"]: "t.me/myfuckinglifetimes",
+            }
+        )
+        music.save()
+        folder = os.path.dirname(m4a_file)
+        cover_path = folder + "/Cover.jpg"
+        title = music[MP4_TAGS_MAP["title"]][0]
+        artist = music[MP4_TAGS_MAP["artist"]][0]
+
+        try:
+            msg = await application.send_message(
+                context.job.chat_id, text=f"Uploading {artist} - {title}"
+            )
+            await application.send_audio(
+                chat_id=context.job.chat_id,
+                title=title,
+                performer=artist,
+                thumbnail=open(cover_path, "rb"),
+                audio=open(m4a_file, "rb"),
+            )
+            await msg.delete()
+
+        except Exception as e:
+            logging.error(e)
+
+        if os.path.exists(context.job.data.downloads_path):
+            shutil.rmtree(context.job.data.downloads_path)
+
+
+async def callback_process(context: ContextTypes.DEFAULT_TYPE):
+    cache_copy = tasks_cache.copy()
+    for uuid in cache_copy.keys():
+        process, task_context = tasks_cache[uuid]
+        raw_line = process.stdout.readline()
+        if raw_line == "" and process.poll() is not None:
+            context.job_queue.run_once(callback_done, 0, data=task_context, chat_id=task_context.chat_id)
+            del tasks_cache[uuid]
+            return
+        if raw_line:
+            line = strip_ansi(raw_line)
+            progress = extract_progress(line)
+            info = extract_info(line)
+            try:
+                if progress:
+                    context.bot.editMessageText(
+                        chat_id=context.job.chat_id,
+                        message_id=task_context.progress_message_id,
+                        text=progress,
+                    )
+                elif info:
+                    context.bot.editMessageText(
+                        chat_id=context.job.chat_id,
+                        message_id=task_context.info_message_id,
+                        text=info,
+                    )
+                    if info.lower().startswith("done") and task_context.progress_message_id is not None:
+                        await context.bot.deleteMessage(
+                            chat_id=context.job.chat_id,
+                            message_id=task_context.progress_message_id,
+                        )
+                        task_context.progress_message_id = None
+            except Exception as e:
+                print(e)
 
 
 async def callback_start(context: ContextTypes.DEFAULT_TYPE):
@@ -51,68 +131,18 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
         context.job.data.downloads_path,
         *context.job.data.urls,
     ]
+
     process = subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
 
     info_message = await context.bot.send_message(context.job.chat_id, text="Started...", reply_to_message_id=context.job.data.msg_id)
-    progress_message = None
+    progress_message = await context.bot.send_message(context.job.chat_id, text="Downloading...", reply_to_message_id=info_message.message_id)
 
-    while True:
-        raw_line = process.stdout.readline()
-        if raw_line == "" and process.poll() is not None:
-            break
-        if raw_line:
-            line = strip_ansi(raw_line)
-            progress = extract_progress(line)
-            info = extract_info(line)
-            try:
-                if progress:
-                    if progress_message is None:
-                        progress_message = await application.send_message(
-                            context.job.chat_id,
-                            text=progress,
-                        )
-                elif info:
-                    await info_message.edit_text(info)
-                    if info.lower().startswith("done") and progress_message is not None:
-                        await progress_message.delete()
-                        progress_message = None
-            except Exception as e:
-                print(e)
-        await asyncio.sleep(0.9)  # avoid flooding Telegram with too many edits
+    context.job.data.info_message_id = info_message
+    context.job.data.progress_message_id = progress_message
 
-        m4a_files = glob.glob(f'{context.job.data.downloads_path}/**/*.m4a', recursive=True)
-        m4a_files = [os.path.abspath(path) for path in m4a_files]
-
-
-        for m4a_file in m4a_files:
-            music = MP4(m4a_file)
-            music.update({
-                MP4_TAGS_MAP["comment"]: "t.me/myfuckinglifetimes",
-            })
-            music.save()
-            folder = os.path.dirname(m4a_file)
-            cover_path = folder + "/Cover.jpg"
-            title = music[MP4_TAGS_MAP["title"]][0]
-            artist = music[MP4_TAGS_MAP["artist"]][0]
-
-            try:
-                msg = await application.send_message(context.job.chat_id,text=f"Uploading {artist} - {title}")
-                await application.send_audio(
-                    chat_id=context.job.chat_id,
-                    title=title,
-                    performer=artist,
-                    thumbnail=open(cover_path, "rb"),
-                    audio=open(m4a_file, "rb"),
-                )
-                await msg.delete()
-
-            except Exception as e:
-                logging.error(e)
-
-        if os.path.exists(context.job.data.downloads_path):
-            shutil.rmtree(context.job.data.downloads_path)
+    tasks_cache[context.job.data.uuid] = (process, context.job.data,)
 
 
 async def callback_validate(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -148,6 +178,8 @@ msg_handler = MessageHandler(
 )
 
 application.add_handler(msg_handler)
+application.job_queue.run_repeating(callback_process, 6, first=0)
+
 
 # try:
 application.run_polling()
