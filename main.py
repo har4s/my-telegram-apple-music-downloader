@@ -1,13 +1,10 @@
 import asyncio
-import contextlib
-import datetime
 import glob
-import io
+import logging
 import os
 import shutil
 from dataclasses import dataclass
 import re
-from datetime import timedelta
 from uuid import uuid4
 from gamdl.cli import main as gamdl_main
 from gamdl.constants import MP4_TAGS_MAP
@@ -44,45 +41,29 @@ application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 async def callback_start(context: ContextTypes.DEFAULT_TYPE):
     start_msg = await context.bot.send_message(context.job.chat_id, text="Started...", reply_to_message_id=context.job.data.msg_id)
-    output_buffer = io.StringIO()
+
     try:
         def blocking_runner():
-            with (
-                contextlib.redirect_stdout(output_buffer),
-                contextlib.redirect_stderr(output_buffer),
-            ):
-                gamdl_main.main(
-                    [
-                        "-c",
-                        "./data/cookies.txt",
-                        "-s",
-                        "--cover-size",
-                        "320",
-                        "-o",
-                        context.job.data.downloads_path,
-                        "--no-config-file",
-                        *context.job.data.urls,
-                    ],
-                )
+            gamdl_main.main(
+                [
+                    "-c",
+                    "./data/cookies.txt",
+                    "-s",
+                    "--cover-size",
+                    "320",
+                    "-o",
+                    context.job.data.downloads_path,
+                    "--no-config-file",
+                    *context.job.data.urls,
+                ],
+            )
 
         await asyncio.to_thread(blocking_runner)
 
     except Exception as e:
-        print(e)
+        logging.error(e)
 
     finally:
-        is_done = False
-        started_time = datetime.datetime.now(datetime.UTC)
-        while not is_done and started_time + timedelta(minutes=5) > datetime.datetime.now(datetime.UTC):
-            for line in output_buffer.getvalue().split("\n"):
-                striped = strip_ansi(line)
-                # progress = extract_progress(striped)
-                info = extract_info(striped)
-                if info and info.lower().startswith("done"):
-                    await start_msg.edit_text(info)
-                    is_done = True
-                    break
-
         m4a_files = glob.glob(f'{context.job.data.downloads_path}/**/*.m4a', recursive=True)
         m4a_files = [os.path.abspath(path) for path in m4a_files]
 
@@ -109,10 +90,12 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
                 await msg.delete()
 
             except Exception as e:
-                print(e)
+                logging.error(e)
 
         if os.path.exists(context.job.data.downloads_path):
             shutil.rmtree(context.job.data.downloads_path)
+
+        await start_msg.delete()
 
 async def callback_validate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
