@@ -94,6 +94,7 @@ async def callback_finish(context: ContextTypes.DEFAULT_TYPE):
     if os.path.exists(context.job.data.downloads_path):
         shutil.rmtree(context.job.data.downloads_path)
 
+    return None
 
 async def callback_process(context: ContextTypes.DEFAULT_TYPE):
     copied_mem = in_memory_process_cache.copy()
@@ -104,19 +105,21 @@ async def callback_process(context: ContextTypes.DEFAULT_TYPE):
             )
         elif task_context.process_msg_id:
             await context.bot.editMessageText(chat_id=task_context.chat_id, message_id=task_context.process_msg_id, text="\n".join(messages[:5]))
+    return None
 
 async def callback_start(context: ContextTypes.DEFAULT_TYPE):
     urls: list[str] = context.job.data.urls
     cookies_path: Path = Path("./data/cookies.txt")
     output_path: Path = Path(context.job.data.downloads_path)
+    cover_size: int = 320
     ffmpeg_path: str | Path = "ffmpeg"
-    save_cover: bool = True
-    overwrite: bool = True
-    disable_music_video_skip: bool = False
-    read_urls_as_txt: bool = False
-    save_playlist: bool = False
-    synced_lyrics_only: bool = False
-    no_synced_lyrics: bool = False
+    save_cover: bool | None = None
+    overwrite: bool | None = None
+    disable_music_video_skip: bool | None = None
+    read_urls_as_txt: bool | None = None
+    save_playlist: bool | None = None
+    synced_lyrics_only: bool | None = None
+    no_synced_lyrics: bool | None = None
     log_level: str = "INFO"
     language: str = "en-US"
     temp_path: Path = Path("./temp")
@@ -136,7 +139,6 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
     template_file_playlist: str = "Playlists/{playlist_artist}/{playlist_title}"
     template_date: str = "%Y-%m-%dT%H:%M:%SZ"
     exclude_tags: str | None = None
-    cover_size: int = 320
     truncate: int | None = None
     codec_song: SongCodec = SongCodec.AAC_LEGACY
     synced_lyrics_format: SyncedLyricsFormat = SyncedLyricsFormat.LRC
@@ -617,6 +619,7 @@ async def callback_start(context: ContextTypes.DEFAULT_TYPE):
         in_memory_process_cache[context.job.data.uuid][1] + [f"Done ({error_count} error(s))"],
         context.job.data,
     )
+    return None
 
 async def callback_validate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
