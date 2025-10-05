@@ -2,10 +2,11 @@ import asyncio
 import asyncio.subprocess
 import logging
 import shutil
-from contextlib import nullcontext
+from io import BytesIO
 from pathlib import Path
 
 from mutagen.mp4 import MP4
+from PIL import Image, ImageOps
 from telegram import MessageEntity, Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
@@ -77,6 +78,25 @@ def prepare_track(path: Path) -> tuple[str, str]:
     return title, artist
 
 
+def prepare_thumbnail(path: Path) -> BytesIO | None:
+    if not path.exists():
+        return None
+
+    try:
+        with path.open("rb") as source:
+            image = Image.open(source)
+            resample = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+            fitted = ImageOps.fit(image.convert("RGB"), (320, 320), method=resample)
+    except Exception:  # pragma: no cover - best effort thumbnail handling
+        logger.exception("Failed to prepare cover thumbnail at %s", path)
+        return None
+
+    buffer = BytesIO()
+    fitted.save(buffer, format="JPEG")
+    buffer.seek(0)
+    return buffer
+
+
 async def watch_download(
     chat_id: int, reply_to: int, download_dir: Path, process, bot
 ) -> None:
@@ -124,15 +144,13 @@ async def watch_download(
         for track in tracks:
             title, artist = prepare_track(track)
             cover = track.with_name("Cover.jpg")
-            with (
-                track.open("rb") as audio,
-                cover.open("rb") if cover.exists() else nullcontext() as thumb,
-            ):
+            thumbnail = prepare_thumbnail(cover)
+            with track.open("rb") as audio:
                 payload = dict(
                     chat_id=chat_id, audio=audio, title=title, performer=artist
                 )
-                if thumb:
-                    payload["thumbnail"] = thumb
+                if thumbnail:
+                    payload["thumbnail"] = thumbnail
                 await bot.send_audio(**payload)
         await info.delete()
     except Exception:  # pragma: no cover
@@ -171,8 +189,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "-c",
         "./data/cookies.txt",
         "-s",
-        "--cover-size",
-        "320",
         "-o",
         str(download_dir),
         *urls,
