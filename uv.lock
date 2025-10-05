@@ -101,7 +101,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/b6/2c/66bab4fef920ef8ca
 
 [[package]]
 name = "gamdl"
-version = "2.5"
+version = "2.6.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -113,9 +113,9 @@ dependencies = [
     { name = "pywidevine" },
     { name = "yt-dlp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/ab/e1e392d60fa2619e3d108ecd1f23653f4095099f4a4d3f7af0a7f1994b0b/gamdl-2.5.tar.gz", hash = "sha256:f5d2f49ed897af643d86051a6bec2fcb0ee510df52e2979b820519420a8d0e04", size = 33799, upload-time = "2025-07-02T13:50:37.463Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/1f/82072cd7d18efe7e617127790ea94e17af2a57dc8f0dfc83e510ede1facc/gamdl-2.6.5.tar.gz", hash = "sha256:5e65e5b7a5a9777874d9ffc674bb96af844d6520c223746dc642910138ac90f5", size = 40636, upload-time = "2025-10-04T20:12:04.611Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/b3/ec0448309ef8365d6cc2b4568d6699639f2efcb1d7d64585cfa4e601b920/gamdl-2.5-py3-none-any.whl", hash = "sha256:5b0015d23f4baf8e103c52144665e42d760a9b541d61e72e4a9c35a6938b6e60", size = 35803, upload-time = "2025-07-02T13:50:36.215Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/b1/f8004411e1abe0e7a544accf24a68772eb5bf39a959b8dd49f4e5366012c/gamdl-2.6.5-py3-none-any.whl", hash = "sha256:81cfe03716c9e7ba5f8efd1da3664eeed4b3a4862c80e938c739f5131b479737", size = 43103, upload-time = "2025-10-04T20:12:03.387Z" },
 ]
 
 [[package]]
@@ -207,7 +207,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gamdl", specifier = ">=2.5" },
+    { name = "gamdl", specifier = ">=2.6.5" },
     { name = "python-decouple", specifier = ">=3.8" },
     { name = "python-telegram-bot", extras = ["job-queue", "webhooks"], specifier = ">=22.2" },
 ]
