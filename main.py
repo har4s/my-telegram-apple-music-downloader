@@ -69,7 +69,7 @@ def extract_urls(message) -> list[str]:
 
 def prepare_track(path: Path) -> tuple[str, str]:
     track = MP4(path)
-    tags = track.MP4Tags() or {}
+    tags = track.tags or {}
     tags[TAGS["comment"]] = [COMMENT_TEXT]
     title = (tags.get(TAGS["title"]) or [path.stem])[0]
     artist = (tags.get(TAGS["artist"]) or ["Unknown artist"])[0]
