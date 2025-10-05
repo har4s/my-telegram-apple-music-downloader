@@ -1,127 +1,205 @@
 import asyncio
-import datetime
-import glob
+import asyncio.subprocess
 import logging
-import os
 import shutil
-from dataclasses import dataclass
-import re
+from contextlib import nullcontext
+from pathlib import Path
 
-from gamdl.constants import MP4_TAGS_MAP
 from mutagen.mp4 import MP4
-from telegram import Update, MessageEntity
+from telegram import MessageEntity, Update
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
-from config import TELEGRAM_TOKEN, TELEGRAM_ADMIN_ID
-
-from asyncio.subprocess import Process # noqa
-
-@dataclass
-class TaskContext:
-    message_id: int
-    dl_path:str
-    process: Process
-    started_at: datetime
-
-application = Application.builder().token(TELEGRAM_TOKEN).build()
+from config import TELEGRAM_ADMIN_ID, TELEGRAM_TOKEN
 
 
-async def callback_start(context: ContextTypes.DEFAULT_TYPE):
-    task_context: TaskContext = context.job.data
-    info_message = await context.bot.send_message(context.job.chat_id, text="Started...", reply_to_message_id=task_context.message_id)
-    # progress_message = await context.bot.send_message(context.job.chat_id, text="Waiting...", reply_to_message_id=info_message.message_id)
+TAGS = {
+    "album": "\xa9alb",
+    "album_artist": "aART",
+    "album_id": "plID",
+    "album_sort": "soal",
+    "artist": "\xa9ART",
+    "artist_id": "atID",
+    "artist_sort": "soar",
+    "comment": "\xa9cmt",
+    "composer": "\xa9wrt",
+    "composer_id": "cmID",
+    "composer_sort": "soco",
+    "copyright": "cprt",
+    "date": "\xa9day",
+    "genre": "\xa9gen",
+    "genre_id": "geID",
+    "lyrics": "\xa9lyr",
+    "media_type": "stik",
+    "rating": "rtng",
+    "storefront": "sfID",
+    "title": "\xa9nam",
+    "title_id": "cnID",
+    "title_sort": "sonm",
+    "xid": "xid ",
+}
+COMMENT_TEXT = "t.me/myfuckinglifetimes"
 
-    return_code = await task_context.process.wait()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    await info_message.edit_text(text=f"Process finished with exit code {return_code}.")
 
-    m4a_files = glob.glob(f"{task_context.dl_path}/**/*.m4a", recursive=True)
-    m4a_files = [os.path.abspath(path) for path in m4a_files]
-
-    for m4a_file in m4a_files:
-        music = MP4(m4a_file)
-        music.update(
-            {
-                MP4_TAGS_MAP["comment"]: "t.me/myfuckinglifetimes",
-            }
+def extract_urls(message) -> list[str]:
+    if not message or not message.entities:
+        return []
+    text = message.text or ""
+    urls: list[str] = []
+    for entity in message.entities:
+        if entity.type == MessageEntity.TEXT_LINK and entity.url:
+            urls.append(entity.url)
+        elif entity.type == MessageEntity.URL:
+            start, end = entity.offset, entity.offset + entity.length
+            urls.append(text[start:end])
+    if urls:
+        logger.info(
+            "Extracted %s URL(s) from message %s",
+            len(urls),
+            getattr(message, "message_id", "?"),
         )
-        music.save()
-        folder = os.path.dirname(m4a_file)
-        cover_path = folder + "/Cover.jpg"
-        title = music[MP4_TAGS_MAP["title"]][0]
-        artist = music[MP4_TAGS_MAP["artist"]][0]
+    else:
+        logger.debug(
+            "No URLs detected in message %s", getattr(message, "message_id", "?")
+        )
+    return urls
 
-        try:
-            msg = await context.bot.send_message(
-                context.job.chat_id, text=f"Uploading {artist} - {title}"
+
+def prepare_track(path: Path) -> tuple[str, str]:
+    track = MP4(path)
+    tags = track.MP4Tags() or {}
+    tags[TAGS["comment"]] = [COMMENT_TEXT]
+    title = (tags.get(TAGS["title"]) or [path.stem])[0]
+    artist = (tags.get(TAGS["artist"]) or ["Unknown artist"])[0]
+    track.save()
+    return title, artist
+
+
+async def watch_download(
+    chat_id: int, reply_to: int, download_dir: Path, process, bot
+) -> None:
+    logger.info("Watching download for chat=%s reply_to=%s", chat_id, reply_to)
+    info = await bot.send_message(
+        chat_id=chat_id, text="Started...", reply_to_message_id=reply_to
+    )
+    try:
+        return_code = await process.wait()
+        output_bytes = (
+            await process.stdout.read() if getattr(process, "stdout", None) else b""
+        )
+        output_text = output_bytes.decode(errors="ignore").strip()
+
+        if return_code:
+            logger.error(
+                "gamdl exited with code %s for chat=%s\n%s",
+                return_code,
+                chat_id,
+                output_text,
             )
-            await context.bot.send_audio(
-                chat_id=context.job.chat_id,
-                title=title,
-                performer=artist,
-                thumbnail=open(cover_path, "rb"),
-                audio=open(m4a_file, "rb"),
+            message = (
+                "Download failed."
+                if not return_code
+                else f"Download failed (exit {return_code})."
             )
-            await msg.delete()
-            await info_message.delete()
-        except Exception as e:
-            logging.error(e)
+            if output_text:
+                message += "\nCheck logs for details."
+            await info.edit_text(message)
+            return
 
-        if os.path.exists(task_context.dl_path):
-            shutil.rmtree(task_context.dl_path)
+        tracks = sorted(download_dir.rglob("*.m4a"))
+        if not tracks:
+            logger.warning("No .m4a tracks found in %s", download_dir)
+            if output_text:
+                logger.info("gamdl output:\n%s", output_text)
+            await info.edit_text("Nothing to upload.")
+            return
+
+        if output_text:
+            logger.info("gamdl output:\n%s", output_text)
+
+        logger.info("Uploading %s track(s) from %s", len(tracks), download_dir)
+        await info.edit_text("Uploading audio...")
+        for track in tracks:
+            title, artist = prepare_track(track)
+            cover = track.with_name("Cover.jpg")
+            with (
+                track.open("rb") as audio,
+                cover.open("rb") if cover.exists() else nullcontext() as thumb,
+            ):
+                payload = dict(
+                    chat_id=chat_id, audio=audio, title=title, performer=artist
+                )
+                if thumb:
+                    payload["thumbnail"] = thumb
+                await bot.send_audio(**payload)
+        await info.delete()
+    except Exception:  # pragma: no cover
+        logger.exception("Download job failed")
+        await bot.send_message(
+            chat_id=chat_id, text="Download finished but upload failed."
+        )
+    finally:
+        shutil.rmtree(download_dir, ignore_errors=True)
 
 
-async def callback_validate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.message.chat_id
-    user_id = update.message.from_user.id
-    if user_id not in TELEGRAM_ADMIN_ID:
-        return await update.message.reply_text("You are not authorized!")
-    message_text = update.message.text
-    url_regex = r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"  # Regular expression for URLs
-    urls: list[str] = re.findall(url_regex, message_text)
-    if len(urls) <= 0:
-        return None
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if not message:
+        return
+    if message.from_user and message.from_user.id not in TELEGRAM_ADMIN_ID:
+        await message.reply_text("You are not authorized!")
+        return
 
-    downloads_path = f"./dl-{update.message.message_id}"
+    user_id = message.from_user.id if message.from_user else "?"
+    logger.info("Handling message %s from user %s", message.message_id, user_id)
 
-    args = [
+    urls = extract_urls(message)
+    if not urls:
+        return
+
+    download_dir = Path(f"dl-{message.message_id}")
+    logger.info(
+        "Launching gamdl for message %s into %s with %s link(s)",
+        message.message_id,
+        download_dir,
+        len(urls),
+    )
+    process = await asyncio.create_subprocess_exec(
+        "gamdl",
         "-c",
         "./data/cookies.txt",
         "-s",
         "--cover-size",
         "320",
         "-o",
-        downloads_path,
+        str(download_dir),
         *urls,
-    ]
-
-    process = await asyncio.create_subprocess_exec(
-        "gamdl",
-        * args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
+    logger.debug("Spawned gamdl pid=%s", getattr(process, "pid", "?"))
 
-    task_context = TaskContext(
-        message_id=update.message.message_id,
-        dl_path=downloads_path,
-        process=process,
-        started_at=datetime.datetime.now(datetime.UTC),
+    context.application.create_task(
+        watch_download(
+            chat_id=message.chat_id,
+            reply_to=message.message_id,
+            download_dir=download_dir,
+            process=process,
+            bot=context.bot,
+        )
     )
 
-    return context.job_queue.run_once(callback_start, 0, data=task_context, chat_id=chat_id)
 
+application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-msg_handler = MessageHandler(
-    filters.TEXT & (
-      filters.Entity(MessageEntity.URL) |
-      filters.Entity(MessageEntity.TEXT_LINK)
-   ),
-    callback_validate,
+application.add_handler(
+    MessageHandler(
+        filters.TEXT
+        & (filters.Entity(MessageEntity.URL) | filters.Entity(MessageEntity.TEXT_LINK)),
+        handle_message,
+    )
 )
 
-application.add_handler(msg_handler)
-
-# try:
 application.run_polling()
-# except Exception: ...

@@ -1,4 +1,13 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+apps/backend/.venv/
+build/
+dist/
+wheels/
+*.egg-info
+
 cookies.txt
 data
-.idea
-.env
+.*
+!.gitignore
