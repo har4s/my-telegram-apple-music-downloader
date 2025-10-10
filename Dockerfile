@@ -1,31 +1,32 @@
-FROM python:latest
+FROM python:3.12-slim
 
 # Set environment variables to avoid interactive prompts during package installations
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
+# Install ffmpeg and other dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     xz-utils \
-    ca-certificates
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O /tmp/ffmpeg.tar.xz;
-
-# Extract and install ffmpeg
-RUN tar -xf /tmp/ffmpeg.tar.xz -C /tmp && \
+# Download and install static ffmpeg
+RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O /tmp/ffmpeg.tar.xz && \
+    tar -xf /tmp/ffmpeg.tar.xz -C /tmp && \
     mv /tmp/ffmpeg-*/ffmpeg /usr/local/bin/ && \
     mv /tmp/ffmpeg-*/ffprobe /usr/local/bin/ && \
     rm -rf /tmp/ffmpeg*
 
-# Create and set the working directory
+# Set working directory
 WORKDIR /app
 
-# Copy requirements file if you have one (optional)
+# Install Python deps
 COPY requirements.txt .
-
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of your bot code into the container
 COPY . .
 
-# No default CMD - will be specified in docker-compose.yml
+# Run the bot
+CMD ["python", "main.py"]

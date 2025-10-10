@@ -1,7 +1,6 @@
 services:
   telegram_bot:
     image: ghcr.io/har4s/my-telegram-apple-music-downloader:main
-    command: python main.py
     volumes:
       - ./_data:/app/data
     env_file:
