@@ -1,6 +1,8 @@
 import asyncio
 import asyncio.subprocess
+import json
 import logging
+import re
 import shutil
 from io import BytesIO
 from pathlib import Path
@@ -38,10 +40,14 @@ TAGS = {
     "title_sort": "sonm",
     "xid": "xid ",
 }
+SYLT_ATOM = "----:com.apple.iTunes:SYLT"
 COMMENT_TEXT = "t.me/myfuckinglifetimes"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+LRC_TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?]")
 
 
 def extract_urls(message) -> list[str]:
@@ -68,10 +74,73 @@ def extract_urls(message) -> list[str]:
     return urls
 
 
+def parse_lrc_file(path: Path) -> tuple[list[tuple[int, str]], str]:
+    entries: list[tuple[int, str]] = []
+    plain_lines: list[str] = []
+
+    with path.open("r", encoding="utf-8") as lyrics:
+        for raw_line in lyrics:
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            timestamps = list(LRC_TIMESTAMP_RE.finditer(line))
+            if not timestamps:
+                continue
+
+            text = LRC_TIMESTAMP_RE.sub("", line).strip()
+            if not text:
+                continue
+
+            plain_lines.append(text)
+            for match in timestamps:
+                minutes = int(match.group(1))
+                seconds = int(match.group(2))
+                raw_fraction = match.group(3) or ""
+                fraction_ms = int((raw_fraction + "000")[:3]) if raw_fraction else 0
+                total_ms = minutes * 60000 + seconds * 1000 + fraction_ms
+                entries.append((total_ms, text))
+
+    entries.sort(key=lambda item: item[0])
+    return entries, "\n".join(plain_lines)
+
+
+def load_lyrics(path: Path) -> tuple[list[tuple[int, str]], str]:
+    lrc_path = path.with_suffix(".lrc")
+    if not lrc_path.exists():
+        logger.debug("Lyrics file not found for %s", path.name)
+        return [], ""
+
+    try:
+        entries, plain_text = parse_lrc_file(lrc_path)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.warning("Failed to parse lyrics file %s: %s", lrc_path, exc)
+        return [], ""
+
+    if not entries and not plain_text:
+        logger.warning("No timestamped lyrics found in %s", lrc_path.name)
+    return entries, plain_text
+
+
 def prepare_track(path: Path) -> tuple[str, str]:
+    synced_entries, plain_text = load_lyrics(path)
     track = MP4(path)
-    tags = track.tags or {}
+    if track.tags is None:
+        track.add_tags()
+    tags = track.tags
     tags[TAGS["comment"]] = [COMMENT_TEXT]
+    if plain_text:
+        tags[TAGS["lyrics"]] = [plain_text]
+    if synced_entries:
+        sylt_entries = [{"time_ms": ms, "text": text} for ms, text in synced_entries]
+        try:
+            payload = json.dumps(sylt_entries, ensure_ascii=False).encode("utf-8")
+        except (TypeError, ValueError) as exc:  # pragma: no cover
+            logger.warning(
+                "Failed to serialize synchronized lyrics for %s: %s", path.name, exc
+            )
+        else:
+            tags[SYLT_ATOM] = [payload]
     title = (tags.get(TAGS["title"]) or [path.stem])[0]
     artist = (tags.get(TAGS["artist"]) or ["Unknown artist"])[0]
     track.save()
