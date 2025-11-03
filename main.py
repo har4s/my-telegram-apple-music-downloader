@@ -58,6 +58,7 @@ LRC_TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?]")
 
 # Codec priority list - try from highest to lowest quality
 CODEC_PRIORITY = [
+    SongCodec.ALAC,
     SongCodec.ATMOS,
     SongCodec.AC3,
     SongCodec.AAC,
