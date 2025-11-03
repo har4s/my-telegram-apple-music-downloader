@@ -61,7 +61,7 @@ LRC_TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?]")
 CODEC_PRIORITY = [
     SongCodec.ALAC,
     SongCodec.ATMOS,
-    SongCodec.AC3,
+    SongCodec.AAC_BINAURAL,
     SongCodec.AAC,
     SongCodec.AAC_LEGACY,
 ]
