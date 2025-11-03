@@ -1,5 +1,3 @@
-import asyncio
-import asyncio.subprocess
 import json
 import logging
 import re
@@ -7,6 +5,14 @@ import shutil
 from io import BytesIO
 from pathlib import Path
 
+from gamdl.api import AppleMusicApi
+from gamdl.downloader import (
+    AppleMusicBaseDownloader,
+    AppleMusicDownloader,
+    AppleMusicMusicVideoDownloader,
+    AppleMusicSongDownloader,
+    AppleMusicUploadedVideoDownloader,
+)
 from mutagen.mp4 import MP4
 from PIL import Image, ImageOps
 from telegram import MessageEntity, Update
@@ -48,6 +54,51 @@ logger = logging.getLogger(__name__)
 
 
 LRC_TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?]")
+
+# Global API instance
+_api: AppleMusicApi | None = None
+
+
+async def get_api() -> AppleMusicApi:
+    """Get or initialize the global API instance."""
+    global _api
+    if _api is None:
+        _api = AppleMusicApi.from_netscape_cookies(cookies_path="./data/cookies.txt")
+        await _api.setup()
+        logger.info("Initialized Apple Music API")
+    return _api
+
+
+async def create_downloader(output_path: Path) -> AppleMusicDownloader:
+    """Create a downloader instance with per-message configuration."""
+    api = await get_api()
+
+    # Initialize base downloader with message-specific config
+    base_downloader = AppleMusicBaseDownloader(
+        apple_music_api=api,
+        output_path=str(output_path),
+        save_cover=True,  # Equivalent to -s flag
+    )
+    base_downloader.setup()
+
+    song_downloader = AppleMusicSongDownloader(base_downloader)
+    song_downloader.setup()
+
+    music_video_downloader = AppleMusicMusicVideoDownloader(base_downloader)
+    music_video_downloader.setup()
+
+    uploaded_video_downloader = AppleMusicUploadedVideoDownloader(base_downloader)
+    uploaded_video_downloader.setup()
+
+    # Create main downloader
+    downloader = AppleMusicDownloader(
+        base_downloader,
+        song_downloader,
+        music_video_downloader,
+        uploaded_video_downloader,
+        skip_music_videos=True,
+    )
+    return downloader
 
 
 def extract_urls(message) -> list[str]:
@@ -154,7 +205,11 @@ def prepare_thumbnail(path: Path) -> BytesIO | None:
     try:
         with path.open("rb") as source:
             image = Image.open(source)
-            resample = Image.Resampling.LANCZOS if hasattr(Image, "Resampling") else Image.LANCZOS
+            resample = (
+                Image.Resampling.LANCZOS
+                if hasattr(Image, "Resampling")
+                else Image.LANCZOS
+            )
             fitted = ImageOps.fit(image.convert("RGB"), (320, 320), method=resample)
     except Exception:  # pragma: no cover - best effort thumbnail handling
         logger.exception("Failed to prepare cover thumbnail at %s", path)
@@ -166,47 +221,60 @@ def prepare_thumbnail(path: Path) -> BytesIO | None:
     return buffer
 
 
+async def download_url(url: str, downloader: AppleMusicDownloader) -> bool:
+    """Download a single URL using gamdl API. Returns True on success."""
+    try:
+        url_info = downloader.get_url_info(url)
+        if not url_info:
+            logger.warning("Failed to get URL info for: %s", url)
+            return False
+
+        download_queue = await downloader.get_download_queue(url_info)
+        if not download_queue:
+            logger.warning("Empty download queue for: %s", url)
+            return False
+
+        for download_item in download_queue:
+            await downloader.download(download_item)
+
+        return True
+    except Exception as exc:
+        logger.exception("Failed to download %s: %s", url, exc)
+        return False
+
+
 async def watch_download(
-    chat_id: int, reply_to: int, download_dir: Path, process, bot
+    chat_id: int, reply_to: int, download_dir: Path, urls: list[str], bot
 ) -> None:
-    logger.info("Watching download for chat=%s reply_to=%s", chat_id, reply_to)
+    logger.info(
+        "Watching download for chat=%s reply_to=%s with %s URL(s)",
+        chat_id,
+        reply_to,
+        len(urls),
+    )
     info = await bot.send_message(
         chat_id=chat_id, text="Started...", reply_to_message_id=reply_to
     )
     try:
-        return_code = await process.wait()
-        output_bytes = (
-            await process.stdout.read() if getattr(process, "stdout", None) else b""
-        )
-        output_text = output_bytes.decode(errors="ignore").strip()
+        # Create downloader instance with message-specific config
+        downloader = await create_downloader(download_dir)
 
-        if return_code:
-            logger.error(
-                "gamdl exited with code %s for chat=%s\n%s",
-                return_code,
-                chat_id,
-                output_text,
-            )
-            message = (
-                "Download failed."
-                if not return_code
-                else f"Download failed (exit {return_code})."
-            )
-            if output_text:
-                message += "\nCheck logs for details."
-            await info.edit_text(message)
+        # Download all URLs
+        success_count = 0
+        for url in urls:
+            if await download_url(url, downloader):
+                success_count += 1
+
+        if success_count == 0:
+            logger.error("All downloads failed for chat=%s", chat_id)
+            await info.edit_text("Download failed.")
             return
 
         tracks = sorted(download_dir.rglob("*.m4a"))
         if not tracks:
             logger.warning("No .m4a tracks found in %s", download_dir)
-            if output_text:
-                logger.info("gamdl output:\n%s", output_text)
             await info.edit_text("Nothing to upload.")
             return
-
-        if output_text:
-            logger.info("gamdl output:\n%s", output_text)
 
         logger.info("Uploading %s track(s) from %s", len(tracks), download_dir)
         await info.edit_text("Uploading audio...")
@@ -248,30 +316,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     download_dir = Path(f"dl-{message.message_id}")
     logger.info(
-        "Launching gamdl for message %s into %s with %s link(s)",
+        "Starting download for message %s into %s with %s link(s)",
         message.message_id,
         download_dir,
         len(urls),
     )
-    process = await asyncio.create_subprocess_exec(
-        "gamdl",
-        "-c",
-        "./data/cookies.txt",
-        "-s",
-        "-o",
-        str(download_dir),
-        *urls,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    logger.debug("Spawned gamdl pid=%s", getattr(process, "pid", "?"))
 
     context.application.create_task(
         watch_download(
             chat_id=message.chat_id,
             reply_to=message.message_id,
             download_dir=download_dir,
-            process=process,
+            urls=urls,
             bot=context.bot,
         )
     )
