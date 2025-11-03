@@ -11,8 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     xz-utils \
     ca-certificates \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    ffmpeg
 
 # Build GPAC and Bento4 on Debian base
 RUN set -eux; \
