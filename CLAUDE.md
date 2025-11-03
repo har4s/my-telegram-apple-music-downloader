@@ -73,6 +73,7 @@ The bot is a single-file application (`main.py`) with the following key parts:
    - Creates a new `AppleMusicDownloader` instance per message
    - Configures output path specific to the message (`dl-{message_id}`)
    - Sets `save_cover=True` to save cover art (equivalent to `-s` flag)
+   - Accepts a codec parameter to configure song quality (ALAC, AAC, AAC_LEGACY)
    - Initializes all downloader types (song, music video, uploaded video)
 
 3. **Message Handler** (`handle_message`):
@@ -82,8 +83,10 @@ The bot is a single-file application (`main.py`) with the following key parts:
    - Delegates to async watcher task with URL list
 
 4. **Download Watcher** (`watch_download`):
-   - Creates a downloader instance with message-specific output path
-   - Processes each URL through `download_url` helper
+   - Implements codec fallback mechanism (ALAC → AAC → AAC_LEGACY)
+   - For each codec, creates a downloader instance and attempts all URLs
+   - If any URL succeeds with a codec, stops trying lower quality codecs
+   - Cleans up failed attempts before trying next codec
    - Sends status updates to user
    - On success: processes all `.m4a` files in download directory
    - Calls `prepare_track` and `prepare_thumbnail` for each file
@@ -149,6 +152,16 @@ The bot uses the `gamdl` Python API directly instead of spawning subprocesses:
 
 The cookies file must contain a valid Apple Music session with an active subscription. Users can extract cookies using browser extensions (Export Cookies for Firefox, Open Cookies.txt for Chrome).
 
+### Codec Fallback System
+
+The bot implements automatic codec fallback to ensure successful downloads:
+- **Priority order**: ALAC (lossless) → AAC (high quality) → AAC_LEGACY (legacy compatibility)
+- **Fallback logic**: Tries each codec in order until at least one URL succeeds
+- **Cleanup between attempts**: Removes failed downloads before trying next codec
+- **Benefits**: Handles cases where higher quality codecs aren't available for certain tracks
+
+The codec priority list is defined in `CODEC_PRIORITY` at the top of `main.py`.
+
 ### MP4 Metadata Tags
 
 The bot uses iTunes-style MP4 atoms (see `TAGS` dict at top of `main.py`):
@@ -182,6 +195,14 @@ The bot uses `python-telegram-bot`'s task system:
 - All exceptions in `watch_download` are caught to send error message to user
 
 ## Common Workflows
+
+### Changing Codec Priority
+
+To modify which codecs are tried and in what order:
+1. Edit the `CODEC_PRIORITY` list at the top of `main.py`
+2. Available codecs: `SongCodec.ALAC`, `SongCodec.AAC`, `SongCodec.AAC_LEGACY`
+3. Codecs are tried in list order (first to last)
+4. To disable fallback: use only one codec in the list
 
 ### Adding New Metadata Fields
 

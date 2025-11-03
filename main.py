@@ -13,6 +13,7 @@ from gamdl.downloader import (
     AppleMusicSongDownloader,
     AppleMusicUploadedVideoDownloader,
 )
+from gamdl.downloader.downloader_song import SongCodec
 from mutagen.mp4 import MP4
 from PIL import Image, ImageOps
 from telegram import MessageEntity, Update
@@ -55,6 +56,14 @@ logger = logging.getLogger(__name__)
 
 LRC_TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?]")
 
+# Codec priority list - try from highest to lowest quality
+CODEC_PRIORITY = [
+    SongCodec.ATMOS,
+    SongCodec.AC3,
+    SongCodec.AAC,
+    SongCodec.AAC_LEGACY,
+]
+
 # Global API instance
 _api: AppleMusicApi | None = None
 
@@ -69,7 +78,9 @@ async def get_api() -> AppleMusicApi:
     return _api
 
 
-async def create_downloader(output_path: Path) -> AppleMusicDownloader:
+async def create_downloader(
+    output_path: Path, codec: SongCodec = SongCodec.ALAC
+) -> AppleMusicDownloader:
     """Create a downloader instance with per-message configuration."""
     api = await get_api()
 
@@ -77,11 +88,11 @@ async def create_downloader(output_path: Path) -> AppleMusicDownloader:
     base_downloader = AppleMusicBaseDownloader(
         apple_music_api=api,
         output_path=str(output_path),
-        save_cover=True,  # Equivalent to -s flag
+        save_cover=True,
     )
     base_downloader.setup()
 
-    song_downloader = AppleMusicSongDownloader(base_downloader)
+    song_downloader = AppleMusicSongDownloader(base_downloader, codec=codec)
     song_downloader.setup()
 
     music_video_downloader = AppleMusicMusicVideoDownloader(base_downloader)
@@ -256,18 +267,34 @@ async def watch_download(
         chat_id=chat_id, text="Started...", reply_to_message_id=reply_to
     )
     try:
-        # Create downloader instance with message-specific config
-        downloader = await create_downloader(download_dir)
-
-        # Download all URLs
+        # Try downloading with codec fallback
         success_count = 0
-        for url in urls:
-            if await download_url(url, downloader):
-                success_count += 1
+        for codec in CODEC_PRIORITY:
+            logger.info("Attempting download with codec: %s", codec.name)
+            # Create downloader instance with message-specific config and codec
+            downloader = await create_downloader(download_dir, codec=codec)
+
+            # Download all URLs with current codec
+            current_success = 0
+            for url in urls:
+                if await download_url(url, downloader):
+                    current_success += 1
+
+            success_count = current_success
+            if success_count > 0:
+                logger.info("Successfully downloaded with codec: %s", codec.name)
+                break
+
+            # Clean up failed attempts before trying next codec
+            if download_dir.exists():
+                shutil.rmtree(download_dir, ignore_errors=True)
+                download_dir.mkdir(parents=True, exist_ok=True)
 
         if success_count == 0:
-            logger.error("All downloads failed for chat=%s", chat_id)
-            await info.edit_text("Download failed.")
+            logger.error(
+                "All downloads failed for chat=%s after trying all codecs", chat_id
+            )
+            await info.edit_text("Download failed with all codecs.")
             return
 
         tracks = sorted(download_dir.rglob("*.m4a"))
