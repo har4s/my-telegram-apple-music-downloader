@@ -14,6 +14,7 @@ from gamdl.downloader import (
     AppleMusicUploadedVideoDownloader,
 )
 from gamdl.downloader.downloader_song import SongCodec
+from gamdl.downloader import DownloadMode
 from mutagen.mp4 import MP4
 from PIL import Image, ImageOps
 from telegram import MessageEntity, Update
@@ -90,6 +91,7 @@ async def create_downloader(
         apple_music_api=api,
         output_path=str(output_path),
         save_cover=True,
+        download_mode=DownloadMode.NM3U8DLRE,
     )
     base_downloader.setup()
 
