@@ -169,8 +169,8 @@ The LRC parser supports multiple timestamps per line (karaoke-style) and handles
 The bot uses `python-telegram-bot`'s task system:
 - `context.application.create_task()` spawns background download watchers
 - Multiple downloads can run concurrently (one per message)
-- Each task is isolated with its own download directory
-- Single global `AppleMusicDownloader` instance is reused across all tasks
+- Each task is isolated with its own download directory and downloader instance
+- Single global `AppleMusicApi` instance is reused across all tasks
 - Cleanup happens in `finally` block to ensure directories are removed
 
 ### Error Handling
