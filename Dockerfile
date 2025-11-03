@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     ffmpeg \
+    libicu76 \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and install pre-built binaries
