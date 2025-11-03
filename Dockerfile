@@ -6,49 +6,33 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Set working directory early so build steps can reference it
 WORKDIR /app
 
-# Install ffmpeg and other dependencies
+# Install ffmpeg and dependencies for downloading binaries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
-    xz-utils \
-    ca-certificates \
-    ffmpeg
+    unzip \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-# Build GPAC and Bento4 on Debian base
+# Download and install pre-built binaries
 RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-    git \
-    g++ \
-    make \
-    cmake \
-    zlib1g-dev \
-    coreutils; \
+    # Install GPAC (MP4Box) from nightly builds
+    wget -O /tmp/gpac.zip "https://download.tsi.telecom-paristech.fr/gpac/nightly_builds/linux64/gpac_nightly_linux64.zip"; \
+    unzip /tmp/gpac.zip -d /tmp/gpac; \
+    find /tmp/gpac -name "MP4Box" -type f -exec install -m 755 {} /usr/local/bin/MP4Box \;; \
+    ln -sf /usr/local/bin/MP4Box /usr/local/bin/mp4box; \
     \
-    # Build and install GPAC
-    git clone --depth=1 https://github.com/gpac/gpac.git ./build/gpac; \
-    cd ./build/gpac; \
-    ./configure; \
-    make -j"$(nproc)"; \
-    make install; \
-    MP4BOX_PATH="$(command -v MP4Box)"; \
-    if [ -n "$MP4BOX_PATH" ]; then ln -sf "$MP4BOX_PATH" "$(dirname "$MP4BOX_PATH")/mp4box"; fi; \
-    cd /app; \
+    # Install Bento4 (mp4decrypt and other tools)
+    wget -O /tmp/bento4.zip "https://www.bok.net/Bento4/binaries/Bento4-SDK-1-6-0-641.x86_64-unknown-linux.zip"; \
+    unzip /tmp/bento4.zip -d /tmp/bento4; \
+    find /tmp/bento4 -name "mp4decrypt" -type f -exec install -m 755 {} /usr/local/bin/mp4decrypt \;; \
     \
-    # Build and install Bento4
-    git clone --depth=1 https://github.com/axiomatic-systems/Bento4.git ./build/Bento4; \
-    mkdir -p ./build/Bento4/cmakebuild; \
-    cd ./build/Bento4/cmakebuild; \
-    cmake -DCMAKE_BUILD_TYPE=Release ..; \
-    make -j"$(nproc)"; \
-    make install; \
-    cd /app; \
+    # Install N_m3u8DL-RE
+    wget -O /tmp/N_m3u8DL-RE.zip "https://github.com/nilaoda/N_m3u8DL-RE/releases/download/v0.5.1-beta/N_m3u8DL-RE_Beta_linux-x64_20240828.zip"; \
+    unzip /tmp/N_m3u8DL-RE.zip -d /tmp/N_m3u8DL-RE; \
+    find /tmp/N_m3u8DL-RE -name "N_m3u8DL-RE" -type f -exec install -m 755 {} /usr/local/bin/N_m3u8DL-RE \;; \
     \
     # Clean up
-    rm -rf ./build; \
-    apt-get purge -y git g++ make cmake zlib1g-dev coreutils; \
-    apt-get autoremove -y; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /tmp/*
 
 # Install Python deps
 COPY requirements.txt .
