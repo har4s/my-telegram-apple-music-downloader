@@ -4,6 +4,8 @@ anyio==4.9.0
     # via httpx
 apscheduler==3.11.0
     # via python-telegram-bot
+async-lru==2.0.5
+    # via gamdl
 certifi==2025.7.14
     # via
     #   httpcore
@@ -11,22 +13,22 @@ certifi==2025.7.14
     #   requests
 charset-normalizer==3.4.2
     # via requests
-click==8.2.1
+click==8.3.0
     # via
     #   gamdl
     #   pywidevine
-colorama==0.4.6
-    # via gamdl
 construct==2.8.8
     # via pymp4
-gamdl==2.6.5
+gamdl==2.7.2
     # via my-telegram-apple-music-downloader (pyproject.toml)
 h11==0.16.0
     # via httpcore
 httpcore==1.0.9
     # via httpx
 httpx==0.28.1
-    # via python-telegram-bot
+    # via
+    #   gamdl
+    #   python-telegram-bot
 idna==3.10
     # via
     #   anyio
@@ -40,7 +42,7 @@ mutagen==1.47.0
     # via gamdl
 pfzy==0.3.4
     # via inquirerpy
-pillow==11.3.0
+pillow==12.0.0
     # via gamdl
 prompt-toolkit==3.0.51
     # via inquirerpy
@@ -74,5 +76,5 @@ urllib3==2.5.0
     # via requests
 wcwidth==0.2.13
     # via prompt-toolkit
-yt-dlp==2025.6.30
+yt-dlp==2025.10.22
     # via gamdl
