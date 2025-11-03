@@ -3,22 +3,53 @@ FROM python:3.12-slim
 # Set environment variables to avoid interactive prompts during package installations
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Set working directory early so build steps can reference it
+WORKDIR /app
+
 # Install ffmpeg and other dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     xz-utils \
     ca-certificates \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Download and install static ffmpeg
-RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O /tmp/ffmpeg.tar.xz && \
-    tar -xf /tmp/ffmpeg.tar.xz -C /tmp && \
-    mv /tmp/ffmpeg-*/ffmpeg /usr/local/bin/ && \
-    mv /tmp/ffmpeg-*/ffprobe /usr/local/bin/ && \
-    rm -rf /tmp/ffmpeg*
-
-# Set working directory
-WORKDIR /app
+# Build GPAC and Bento4 on Debian base
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+    git \
+    g++ \
+    make \
+    cmake \
+    zlib1g-dev \
+    coreutils; \
+    \
+    # Build and install GPAC
+    git clone --depth=1 https://github.com/gpac/gpac.git ./build/gpac; \
+    cd ./build/gpac; \
+    ./configure; \
+    make -j"$(nproc)"; \
+    make install; \
+    MP4BOX_PATH="$(command -v MP4Box)"; \
+    if [ -n "$MP4BOX_PATH" ]; then ln -sf "$MP4BOX_PATH" "$(dirname "$MP4BOX_PATH")/mp4box"; fi; \
+    cd /app; \
+    \
+    # Build and install Bento4
+    git clone --depth=1 https://github.com/axiomatic-systems/Bento4.git ./build/Bento4; \
+    mkdir -p ./build/Bento4/cmakebuild; \
+    cd ./build/Bento4/cmakebuild; \
+    cmake -DCMAKE_BUILD_TYPE=Release ..; \
+    make -j"$(nproc)"; \
+    make install; \
+    cd /app; \
+    \
+    # Clean up
+    rm -rf ./build; \
+    apt-get purge -y git g++ make cmake zlib1g-dev coreutils; \
+    apt-get autoremove -y; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python deps
 COPY requirements.txt .
