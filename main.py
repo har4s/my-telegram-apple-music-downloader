@@ -13,7 +13,7 @@ from gamdl.downloader import (
     AppleMusicSongDownloader,
     AppleMusicUploadedVideoDownloader,
 )
-from gamdl.downloader.downloader_song import SongCodec
+from gamdl.interface import SongCodec
 from gamdl.downloader import DownloadMode
 from mutagen.mp4 import MP4
 from PIL import Image, ImageOps
@@ -63,7 +63,7 @@ CODEC_PRIORITY = [
     # SongCodec.ATMOS, # ATMOS is not available in telegram yet
     SongCodec.AAC_BINAURAL,
     SongCodec.AAC,
-    SongCodec.AAC_LEGACY,
+    SongCodec.AAC_WEB,
 ]
 
 # Global API instance
