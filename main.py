@@ -254,6 +254,8 @@ async def download_url(url: str, downloader: AppleMusicDownloader) -> bool:
     try:
         download_queue = []
         async for download_item in downloader.get_download_item_from_url(url):
+            if download_item.media.partial:
+                continue
             download_queue.append(download_item)
 
         if not download_queue:
