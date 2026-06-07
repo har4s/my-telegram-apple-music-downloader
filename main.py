@@ -12,9 +12,16 @@ from gamdl.downloader import (
     AppleMusicMusicVideoDownloader,
     AppleMusicSongDownloader,
     AppleMusicUploadedVideoDownloader,
+    DownloadMode,
 )
-from gamdl.interface import SongCodec
-from gamdl.downloader import DownloadMode
+from gamdl.interface import (
+    AppleMusicBaseInterface,
+    AppleMusicInterface,
+    AppleMusicMusicVideoInterface,
+    AppleMusicSongInterface,
+    AppleMusicUploadedVideoInterface,
+    SongCodec,
+)
 from mutagen.mp4 import MP4
 from PIL import Image, ImageOps
 from telegram import MessageEntity, Update
@@ -74,8 +81,11 @@ async def get_api() -> AppleMusicApi:
     """Get or initialize the global API instance."""
     global _api
     if _api is None:
-        _api = AppleMusicApi.from_netscape_cookies(cookies_path="./data/cookies.txt")
-        await _api.setup()
+        _api = await AppleMusicApi.create_from_netscape_cookies(
+            cookies_path="./data/cookies.txt"
+        )
+        if not _api.active_subscription:
+            raise RuntimeError("No active Apple Music subscription")
         logger.info("Initialized Apple Music API")
     return _api
 
@@ -86,33 +96,37 @@ async def create_downloader(
     """Create a downloader instance with per-message configuration."""
     api = await get_api()
 
-    # Initialize base downloader with message-specific config
+    base_interface = await AppleMusicBaseInterface.create(apple_music_api=api)
+    song_interface = AppleMusicSongInterface(
+        base=base_interface,
+        codec_priority=[codec],
+    )
+    music_video_interface = AppleMusicMusicVideoInterface(base=base_interface)
+    uploaded_video_interface = AppleMusicUploadedVideoInterface(base=base_interface)
+    interface = AppleMusicInterface(
+        song=song_interface,
+        music_video=music_video_interface,
+        uploaded_video=uploaded_video_interface,
+        disallowed_media_types=["music-video", "music-videos"],
+    )
+
     base_downloader = AppleMusicBaseDownloader(
-        apple_music_api=api,
+        interface=interface,
         output_path=str(output_path),
-        save_cover=True,
         download_mode=DownloadMode.NM3U8DLRE,
     )
-    base_downloader.setup()
-
-    song_downloader = AppleMusicSongDownloader(base_downloader, codec=codec)
-    song_downloader.setup()
-
-    music_video_downloader = AppleMusicMusicVideoDownloader(base_downloader)
-    music_video_downloader.setup()
-
-    uploaded_video_downloader = AppleMusicUploadedVideoDownloader(base_downloader)
-    uploaded_video_downloader.setup()
-
-    # Create main downloader
-    downloader = AppleMusicDownloader(
-        base_downloader,
-        song_downloader,
-        music_video_downloader,
-        uploaded_video_downloader,
-        skip_music_videos=True,
+    song_downloader = AppleMusicSongDownloader(base=base_downloader)
+    music_video_downloader = AppleMusicMusicVideoDownloader(base=base_downloader)
+    uploaded_video_downloader = AppleMusicUploadedVideoDownloader(
+        base=base_downloader
     )
-    return downloader
+
+    return AppleMusicDownloader(
+        song=song_downloader,
+        music_video=music_video_downloader,
+        uploaded_video=uploaded_video_downloader,
+        save_cover=True,
+    )
 
 
 def extract_urls(message) -> list[str]:
@@ -238,12 +252,10 @@ def prepare_thumbnail(path: Path) -> BytesIO | None:
 async def download_url(url: str, downloader: AppleMusicDownloader) -> bool:
     """Download a single URL using gamdl API. Returns True on success."""
     try:
-        url_info = downloader.get_url_info(url)
-        if not url_info:
-            logger.warning("Failed to get URL info for: %s", url)
-            return False
+        download_queue = []
+        async for download_item in downloader.get_download_item_from_url(url):
+            download_queue.append(download_item)
 
-        download_queue = await downloader.get_download_queue(url_info)
         if not download_queue:
             logger.warning("Empty download queue for: %s", url)
             return False
